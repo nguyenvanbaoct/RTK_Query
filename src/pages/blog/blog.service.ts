@@ -9,7 +9,7 @@ export const blogApi = createApi({
   }),
   endpoints: (build) => ({
     // Generic type theo thứ tự là kiểu response trả về và argument
-    getPost: build.query<Post[], void>({
+    getPosts: build.query<Post[], void>({
       query: () => 'posts', // method không có argument
       /**
        * providesTags có thể là array hoặc callback return array
@@ -38,8 +38,31 @@ export const blogApi = createApi({
         }
       },
       invalidatesTags: (result, err, body) => [{ type: 'Posts', id: 'LIST' }]
+    }),
+    getPost: build.query<Post, string>({
+      query: (id) => `posts/${id}`
+    }),
+    updatePost: build.mutation<Post, { id: string; body: Post }>({
+      query(data) {
+        return {
+          url: `posts/${data.id}`,
+          method: 'PUT',
+          body: data.body
+        }
+      },
+      invalidatesTags: (result, err, data) => [{ type: 'Posts', id: data.id }]
+    }),
+    deletePost: build.mutation<{}, string>({
+      query(id) {
+        return {
+          url: `posts/${id}`,
+          method: 'DELETE'
+        }
+      },
+      invalidatesTags: (result, err, id) => [{ type: 'Posts', id }]
     })
   })
 })
 
-export const { useGetPostQuery, useAddPostMutation } = blogApi
+export const { useGetPostQuery, useAddPostMutation, useGetPostsQuery, useUpdatePostMutation, useDeletePostMutation } =
+  blogApi

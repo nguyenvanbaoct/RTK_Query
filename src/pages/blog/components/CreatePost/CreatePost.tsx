@@ -1,6 +1,10 @@
-import { useAddPostMutation } from 'pages/blog/blog.service'
+import classNames from 'classnames'
+import { useAddPostMutation, useGetPostQuery, useUpdatePostMutation } from 'pages/blog/blog.service'
 import { Post } from 'pages/types/blog.type'
-import { useState } from 'react'
+import { Fragment, useEffect, useMemo, useState } from 'react'
+import { useSelector } from 'react-redux'
+import { RootState } from 'store'
+import { isEntityError } from 'utils/helpers'
 
 const initialState: Omit<Post, 'id'> = {
   description: '',
@@ -10,14 +14,53 @@ const initialState: Omit<Post, 'id'> = {
   title: ''
 }
 
+// Tip copy các kiểu Omit<Post, 'id'> để làm key cho kiểu FormError
+
+type FormError =
+  | {
+      [key in keyof typeof initialState]: string
+    }
+  | null
+
 export default function CreatePost() {
-  const [formData, setFormData] = useState<Omit<Post, 'id'>>(initialState)
-  const [addPost, setAddPost] = useAddPostMutation()
+  const [formData, setFormData] = useState<Omit<Post, 'id'> | Post>(initialState)
+  const [addPost, addPostResult] = useAddPostMutation()
+  const [updatePost, updatePostResult] = useUpdatePostMutation()
+  const postId = useSelector((state: RootState) => state.blog.postId)
+  // skip: dùng để check nếu có postId thì mới gọi api, còn kh thì kh gọi
+  const { data } = useGetPostQuery(postId, { skip: !postId })
+
+  const errorForm: FormError = useMemo(() => {
+    const errorResult = postId ? updatePostResult.error : addPostResult.error
+
+    if (isEntityError(errorResult)) {
+      return errorResult.data.error as FormError
+    }
+    return null
+  }, [postId, updatePostResult, addPostResult])
+
+  useEffect(() => {
+    if (data) {
+      setFormData(data)
+    }
+  }, [data])
 
   const handleSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault()
-    await addPost(formData).unwrap()
-    setFormData(initialState)
+    try {
+      if (postId) {
+        await updatePost({
+          body: formData as Post,
+          id: postId
+        }).unwrap()
+        // unwrap() nó biến các dispatch thành promise
+      } else {
+        await addPost(formData).unwrap()
+      }
+      setFormData(initialState)
+    } catch (error) {
+      console.log(error)
+    }
   }
 
   return (
@@ -67,18 +110,38 @@ export default function CreatePost() {
         </div>
       </div>
       <div className='mb-6'>
-        <label htmlFor='publishDate' className='mb-2 block text-sm font-medium text-gray-900 dark:text-gray-300'>
+        <label
+          htmlFor='publishDate'
+          className={classNames('mb-2 block text-sm font-medium  dark:text-gray-300', {
+            'text-red-700': Boolean(errorForm?.publishDate),
+            'text-gray-900': !Boolean(errorForm?.publishDate)
+          })}
+        >
           Publish Date
         </label>
         <input
           type='datetime-local'
           id='publishDate'
-          className='block w-56 rounded-lg border border-gray-300 bg-gray-50 p-2.5 text-sm text-gray-900 focus:border-blue-500 focus:outline-none focus:ring-blue-500'
+          className={classNames(
+            'block w-56 rounded-lg border border-gray-300 bg-gray-50 p-2.5 text-sm text-gray-900 focus:border-blue-500 focus:outline-none focus:ring-blue-500',
+            {
+              'border-red-500 bg-red-50 text-red-900 placeholder-red-700 focus:border-red-500 focus:ring-blue-500':
+                Boolean(errorForm?.publishDate),
+              'border-gray-300 bg-gray-50 text-gray-900 focus:border-blue-500 focus:ring-blue-500': !Boolean(
+                errorForm?.publishDate
+              )
+            }
+          )}
           placeholder='Title'
           required
           value={formData.publishDate}
           onChange={(event) => setFormData((prev) => ({ ...prev, publishDate: event.target.value }))}
         />
+        {errorForm?.publishDate && (
+          <p className='mt-2 text-sm text-red-600'>
+            <span className='font-medium'>Lỗi! {errorForm.publishDate}</span>
+          </p>
+        )}
       </div>
       <div className='mb-6 flex items-center'>
         <input
@@ -93,30 +156,36 @@ export default function CreatePost() {
         </label>
       </div>
       <div>
-        <button
-          className='group relative inline-flex items-center justify-center overflow-hidden rounded-lg bg-gradient-to-br from-purple-600 to-blue-500 p-0.5 text-sm font-medium text-gray-900 hover:text-white focus:outline-none focus:ring-4 focus:ring-blue-300 group-hover:from-purple-600 group-hover:to-blue-500 dark:text-white dark:focus:ring-blue-800'
-          type='submit'
-        >
-          <span className='relative rounded-md bg-white px-5 py-2.5 transition-all duration-75 ease-in group-hover:bg-opacity-0 dark:bg-gray-900'>
-            Publish Post
-          </span>
-        </button>
-        {/* <button
-          type='submit'
-          className='group relative mb-2 mr-2 inline-flex items-center justify-center overflow-hidden rounded-lg bg-gradient-to-br from-teal-300 to-lime-300 p-0.5 text-sm font-medium text-gray-900 focus:outline-none focus:ring-4 focus:ring-lime-200 group-hover:from-teal-300 group-hover:to-lime-300 dark:text-white dark:hover:text-gray-900 dark:focus:ring-lime-800'
-        >
-          <span className='relative rounded-md bg-white px-5 py-2.5 transition-all duration-75 ease-in group-hover:bg-opacity-0 dark:bg-gray-900'>
-            Update Post
-          </span>
-        </button>
-        <button
-          type='reset'
-          className='group relative mb-2 mr-2 inline-flex items-center justify-center overflow-hidden rounded-lg bg-gradient-to-br from-red-200 via-red-300 to-yellow-200 p-0.5 text-sm font-medium text-gray-900 focus:outline-none focus:ring-4 focus:ring-red-100 group-hover:from-red-200 group-hover:via-red-300 group-hover:to-yellow-200 dark:text-white dark:hover:text-gray-900 dark:focus:ring-red-400'
-        >
-          <span className='relative rounded-md bg-white px-5 py-2.5 transition-all duration-75 ease-in group-hover:bg-opacity-0 dark:bg-gray-900'>
-            Cancel
-          </span>
-        </button> */}
+        {Boolean(postId) && (
+          <Fragment>
+            <button
+              type='submit'
+              className='group relative mb-2 mr-2 inline-flex items-center justify-center overflow-hidden rounded-lg bg-gradient-to-br from-teal-300 to-lime-300 p-0.5 text-sm font-medium text-gray-900 focus:outline-none focus:ring-4 focus:ring-lime-200 group-hover:from-teal-300 group-hover:to-lime-300 dark:text-white dark:hover:text-gray-900 dark:focus:ring-lime-800'
+            >
+              <span className='relative rounded-md bg-white px-5 py-2.5 transition-all duration-75 ease-in group-hover:bg-opacity-0 dark:bg-gray-900'>
+                Update Post
+              </span>
+            </button>
+            <button
+              type='reset'
+              className='group relative mb-2 mr-2 inline-flex items-center justify-center overflow-hidden rounded-lg bg-gradient-to-br from-red-200 via-red-300 to-yellow-200 p-0.5 text-sm font-medium text-gray-900 focus:outline-none focus:ring-4 focus:ring-red-100 group-hover:from-red-200 group-hover:via-red-300 group-hover:to-yellow-200 dark:text-white dark:hover:text-gray-900 dark:focus:ring-red-400'
+            >
+              <span className='relative rounded-md bg-white px-5 py-2.5 transition-all duration-75 ease-in group-hover:bg-opacity-0 dark:bg-gray-900'>
+                Cancel
+              </span>
+            </button>
+          </Fragment>
+        )}
+        {!Boolean(postId) && (
+          <button
+            className='group relative inline-flex items-center justify-center overflow-hidden rounded-lg bg-gradient-to-br from-purple-600 to-blue-500 p-0.5 text-sm font-medium text-gray-900 hover:text-white focus:outline-none focus:ring-4 focus:ring-blue-300 group-hover:from-purple-600 group-hover:to-blue-500 dark:text-white dark:focus:ring-blue-800'
+            type='submit'
+          >
+            <span className='relative rounded-md bg-white px-5 py-2.5 transition-all duration-75 ease-in group-hover:bg-opacity-0 dark:bg-gray-900'>
+              Publish Post
+            </span>
+          </button>
+        )}
       </div>
     </form>
   )
